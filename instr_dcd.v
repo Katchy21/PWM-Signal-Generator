@@ -27,7 +27,7 @@ reg state;
 
 assign data_out = data_out_reg;
 assign data_write = data_write_reg;
-assign addr = addr_reg;
+assign addr = hl_reg ? addr_reg + 6'd1 : addr_reg;
 assign read = read_reg;
 assign write = write_reg;
 
