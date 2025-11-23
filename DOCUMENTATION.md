@@ -1,6 +1,6 @@
-# Documentation
+# System Documentation
 
-### COMMUNICATION BRIDGE
+## COMMUNICATION BRIDGE
 
 ```
 reg [1:0] sclk_sync, cs_sync;
@@ -126,9 +126,7 @@ At this moment, the full 8-bit value in `shift_in` is valid and ready for the do
 
 This signal is essential for the component that decodes or processes the received SPI byte.
 
----
-
-### INSTRUCTION DECODER
+## INSTRUCTION DECODER
 
 The instruction decoder receives bytes from the SPI bridge and interprets them either as **instruction bytes** or **data bytes**, depending on the current internal state. Before implementing the decoding logic, the necessary output registers are defined and connected to their corresponding module outputs through continuous assignments. A single-bit `state` register is also introduced to indicate whether the module is currently processing an instruction (`state = 0`) or receiving the data associated with that instruction (`state = 1`).
 
@@ -235,15 +233,13 @@ state <= 0;    // return to SETUP and wait for next instruction
 
 The decoder waits for the next `byte_sync` signal from the SPI bridge, indicating that a new instruction byte has been received and is ready for processing.
 
----
-
-# Implementation Notes for `regs.v` + `counter.v`
-
-## Register Block Implementation (`regs.v`)
+## REGISTER BLOCK IMPLEMENTATION (`regs.v`)
 
 This section describes only the implementation details specific to my design, not the generic architecture already provided in the assignment.
 
-### Internal Structure
+---
+
+### **Internal Structure**
 
 All user-visible registers (`PERIOD`, `COUNTER_EN`, `COMPARE1/2`, `PRESCALE`, `UPNOTDOWN`, `PWM_EN`, `FUNCTIONS`) are stored using Verilog `reg` variables with their exact logical width.  
 Two additional internal elements are used:
@@ -251,18 +247,22 @@ Two additional internal elements are used:
 - `count_reset_sh` – a 2-bit internal countdown for generating the two‑cycle active pulse for `COUNTER_RESET`.
 - `data_read` – combinational multiplexer output for read operations.
 
-### Addressing Choices
+---
+
+### **Addressing Choices**
 
 - The module receives a 6-bit address.
 - 16-bit registers are split into LSB/MSB across consecutive addresses.
 - Unused addresses have no effect on write and return `0x00` on read.
 
-### COUNTER_RESET Mechanism
+---
+
+### **COUNTER_RESET Mechanism**
 
 Writing to address `0x07` loads `count_reset_sh = 2'b11`, which decrements each clock.  
 `count_reset` is high whenever the countdown is non‑zero, producing an exact two‑cycle pulse.
 
-### Write Logic Details
+### **Write Logic Details**
 
 Only meaningful bits are stored:
 
@@ -270,7 +270,7 @@ Only meaningful bits are stored:
 - `FUNCTIONS` uses `data_write[1:0]`
 - 16‑bit registers follow LSB/MSB splitting.
 
-### Read Logic Details
+### **Read Logic Details**
 
 The read path is a combinational multiplexer:
 
@@ -279,16 +279,14 @@ The read path is a combinational multiplexer:
 - `COUNTER_RESET` always returns `0x00`
 - Invalid addresses return `0x00`
 
-### Reset Behaviour
+### **Reset Behaviour**
 
 Registers initialize to deterministic defaults:  
 counter disabled, prescaler zero, comparators zero, PWM disabled, up-count direction.
 
----
+## COUNTER IMPLEMENTATION (`counter.v`)
 
-## Counter Implementation (`counter.v`)
-
-### Internal State and Prescaler
+### **Internal State and Prescaler**
 
 Two 16‑bit registers:
 
@@ -303,18 +301,24 @@ prescale_target = 1 << prescale;
 
 This implements frequency division by `2^PRESCALE`.
 
-### Reset and Enable Behaviour
+---
+
+### **Reset and Enable Behaviour**
 
 - Asynchronous reset clears both registers.
 - `count_reset` has highest priority and resets only counter-related registers.
 - When `en = 0`, `count_val` holds its value while `presc_cnt` resets.
 
-### Prescaler and Counting Logic
+---
+
+### **Prescaler and Counting Logic**
 
 If `PRESCALE = 0`, the counter ticks every clock.  
 If `PRESCALE > 0`, the prescaler increments until reaching `prescale_target − 1`, then resets and produces one tick.
 
-### Up/Down and Period Handling
+---
+
+### **Up/Down and Period Handling**
 
 On each tick:
 
@@ -323,13 +327,9 @@ On each tick:
 
 `COMPARE1` and `COMPARE2` are not used in this module; they are consumed by the PWM block.
 
----
+## PWM GENERATOR (`pwm_gen.v`)
 
-# PWM Generator (`pwm_gen.v`) – Implementation Documentation
-
-## Module Implementation
-
-### 1. Bit Extraction from `functions` Register
+### **1. Bit Extraction from `functions` Register**
 ```verilog
 wire align_left_right = functions[0];
 wire aligned_mode = functions[1];
@@ -340,7 +340,7 @@ wire aligned_mode = functions[1];
 
 ---
 
-### 2. Overflow/Underflow Detection
+### **2. Overflow/Underflow Detection**
 ```verilog
 wire overflow_event = (count_val == period);
 wire wrap_event = (count_val == 0 && last_count_val == period);
@@ -353,7 +353,7 @@ wire overflow_underflow = overflow_event || wrap_event;
 
 ---
 
-### 3. Storing Previous Counter State
+### **3. Storing Previous Counter State**
 ```verilog
 reg [15:0] last_count_val;
 reg last_overflow_underflow;
@@ -363,7 +363,7 @@ reg last_overflow_underflow;
 
 ---
 
-### 4. Retaining Active Configurations at Period Start
+### **4. Retaining Active Configurations at Period Start**
 ```verilog
 reg[15:0] active_period;
 reg[15:0] active_compare1;
@@ -386,9 +386,9 @@ end
 
 ---
 
-### 5. PWM Signal Generation
+### **5. PWM Signal Generation**
 
-#### 5.1. PWM Disabled
+#### **5.1. PWM Disabled**
 ```verilog
 if (!pwm_en)
     pwm_out <= pwm_out;
@@ -398,7 +398,7 @@ if (!pwm_en)
 
 ---
 
-#### 5.2. Aligned Mode (`aligned_mode == 0`)
+#### **5.2. Aligned Mode (`aligned_mode == 0`)**
 
 * **Left-aligned (`align_left_right == 0`)**
 ```verilog
@@ -424,7 +424,7 @@ else if (count_val == active_compare1)
 
 ---
 
-#### 5.3. Unaligned Mode (`aligned_mode == 1`)
+#### **5.3. Unaligned Mode (`aligned_mode == 1`)**
 ```verilog
 if (overflow_underflow && !last_overflow_underflow)
     pwm_out <= 1'b0;
@@ -440,14 +440,14 @@ else if (count_val == active_compare2)
 
 ---
 
-### 6. Reset and Synchronization
+### **6. Reset and Synchronization**
 
 * At asynchronous reset (`rst_n == 0`) &rarr; all registers and the PWM signal are initialized to 0.
 * All operations occur on the rising edge of the `clk` clock.
 
 ---
 
-### 7. Summary
+### **7. Summary**
 
 * The code synchronizes PWM configurations at **the beginning of the period**.
 * Supports **left/right aligned** and **aligned/unaligned mode**.
